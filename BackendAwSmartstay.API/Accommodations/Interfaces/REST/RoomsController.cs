@@ -31,7 +31,7 @@ public class RoomsController(
     /// <param name="roomId">The unique domain identifier value representing the targeted room aggregate root.</param>
     /// <returns>An asynchronous action result containing the matching room resource state representation.</returns>
     [HttpGet("{roomId:int}")]
-    [AllowAnonymous]
+    [Authorize(UserRoles.Guest, UserRoles.Admin, UserRoles.ChainAdmin)]
     [SwaggerOperation(
         Summary = "Get room by its unique identifier",
         Description = "Retrieves state parameters and specifications for a single room aggregate entry.",
@@ -78,10 +78,10 @@ public class RoomsController(
     /// </summary>
     /// <returns>A resource collection mapping all room aggregates present in the persistent tier.</returns>
     [HttpGet]
-    [AllowAnonymous]
+    [Authorize(UserRoles.Guest, UserRoles.Admin, UserRoles.ChainAdmin)]
     [SwaggerOperation(
         Summary = "Get all registered rooms",
-        Description = "Retrieves public room catalog data for client browsing. Authenticated operational users still keep scoped access rules.",
+        Description = "Retrieves room aggregates. ChainAdmin sees all rooms; Admin and operational staff see only rooms belonging to their assigned hotel.",
         OperationId = "GetAllRooms")]
     [SwaggerResponse(StatusCodes.Status200OK, "The room resource list was fetched successfully.", typeof(IEnumerable<RoomResource>))]
     [SwaggerResponse(StatusCodes.Status401Unauthorized, "The request lacks a valid identity identification token.")]
@@ -89,19 +89,20 @@ public class RoomsController(
     public async Task<IActionResult> GetAllRooms()
     {
         var user = HttpContext.Items["User"] as User;
+        if (user == null)
+            return Unauthorized();
 
-        // Public client browsing: visitors can see rooms without signing in.
-        if (user == null || string.Equals(user.Role.Value, UserRoles.Guest, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(user.Role.Value, UserRoles.ChainAdmin, StringComparison.OrdinalIgnoreCase))
+        var role = user.Role.Value?.ToLowerInvariant();
+
+        // ChainAdmin sees all rooms
+        if (role == UserRoles.ChainAdmin)
         {
             var rooms = await roomQueryService.Handle(new GetAllRoomsQuery());
             var roomResources = rooms.Select(RoomResourceFromEntityAssembler.ToResourceFromEntity);
             return Ok(roomResources);
         }
 
-        var role = user.Role.Value?.ToLowerInvariant();
-
-        // Admin and operational staff: MUST filter by their assigned hotelId.
+        // Admin and operational staff: MUST filter by their assigned hotelId
         if (role == UserRoles.Admin || role == UserRoles.Staff ||
             role == UserRoles.Reception || role == UserRoles.Housekeeping ||
             role == UserRoles.Maintenance)
@@ -114,26 +115,15 @@ public class RoomsController(
             return Ok(roomResources);
         }
 
-        return Forbid();
-    }
+        // Guest: sees all rooms for browsing
+        if (role == UserRoles.Guest)
+        {
+            var rooms = await roomQueryService.Handle(new GetAllRoomsQuery());
+            var roomResources = rooms.Select(RoomResourceFromEntityAssembler.ToResourceFromEntity);
+            return Ok(roomResources);
+        }
 
-    /// <summary>
-    ///     Retrieves rooms that belong to a specific hotel for the client catalog.
-    /// </summary>
-    /// <param name="hotelId">The hotel identifier.</param>
-    /// <returns>A list of room resources for the selected hotel.</returns>
-    [HttpGet("hotel/{hotelId:int}")]
-    [AllowAnonymous]
-    [SwaggerOperation(
-        Summary = "Get rooms by hotel",
-        Description = "Retrieves rooms for a hotel without requiring sign-in, enabling guest browsing in the client app.",
-        OperationId = "GetRoomsByHotelId")]
-    [SwaggerResponse(StatusCodes.Status200OK, "The room resource list for the hotel was fetched successfully.", typeof(IEnumerable<RoomResource>))]
-    public async Task<IActionResult> GetRoomsByHotelId(int hotelId)
-    {
-        var rooms = await roomQueryService.Handle(new GetRoomsByHotelIdQuery(hotelId));
-        var roomResources = rooms.Select(RoomResourceFromEntityAssembler.ToResourceFromEntity);
-        return Ok(roomResources);
+        return Forbid();
     }
     
     /// <summary>
@@ -142,7 +132,7 @@ public class RoomsController(
     /// <param name="roomTypeId">The tracking domain identity marker of the target room type entity.</param>
     /// <returns>An enumerable resource listing matching room representations.</returns>
     [HttpGet("type/{roomTypeId:int}")]
-    [AllowAnonymous]
+    [Authorize(UserRoles.Guest, UserRoles.Admin, UserRoles.ChainAdmin)]
     [SwaggerOperation(
         Summary = "Get rooms by their category or room type",
         Description = "Retrieves a sub-set of room aggregates filtering criteria by their associated category index mapping.",

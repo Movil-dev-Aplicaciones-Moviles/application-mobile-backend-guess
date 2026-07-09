@@ -46,7 +46,7 @@ builder.AddCortexMediatorServices();
 
 // New implementation - Health Checks
 builder.Services.AddHealthChecks()
-    .AddMySql(builder.Configuration.GetConnectionString("DefaultConnection")!, 
+    .AddMySql(builder.GetMySqlConnectionString(), 
         name: "mysql-db-check", 
         tags: new[] { "database" });
 
